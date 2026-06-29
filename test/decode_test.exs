@@ -55,6 +55,55 @@ defmodule ExAIS.DecodeTest do
       assert latest == DateTime.from_unix!(1_694_649_009)
     end
 
+    test "station data" do
+      {decoded, _groups, latest} =
+        ExAIS.Decoder.decode_messages(
+          [
+            "\\s:poole,c:1782400298,t:LIVE*1A\\!AIVDM,1,1,,B,13IlvA01BrwnVHhLb5sAb1G:88G5,0*1E",
+            "\\s:poole,c:1782400298,t:LIVE*1A\\!AIVDM,1,1,,B,19NSsnP020wk;u0LPlnRkRE408G7,0*51",
+            "\\s:poole,c:1782400298,t:LIVE*1A\\!AIVDM,1,1,,A,13l3qvh020On6=nLm`5bG`C@0@G=,0*5A",
+            "\\s:poole,c:1782400298,t:LIVE*1A\\!AIVDM,1,1,,A,19NSnC@01VOm3vhLb679s7o<0HG@,0*78",
+            "\\s:poole,c:1782400298,t:LIVE*1A\\!AIVDM,1,1,,B,33MAleE000Onr32M12gcF;7@0Dmb,0*3C",
+            "\\s:poole,c:1782400299,t:LIVE*1B\\!AIVDM,1,1,,A,402=agAvadg;Wwpj8rLwAQ?02HGN,0*62"
+          ],
+          %{
+            fragment: "",
+            decoded: [],
+            groups: %{},
+            latest: DateTime.from_unix!(0)
+          },
+          Ais.all_msg_types()
+        )
+
+      assert Enum.count(decoded) == 6
+      assert latest == DateTime.from_unix!(1_782_400_299)
+    end
+
+    test "multi-sentence data without g: tags" do
+      {decoded, _groups, latest} =
+        ExAIS.Decoder.decode_messages(
+          [
+            "\\s:poole,c:1782400298,t:LIVE*1A\\!AIVDM,2,1,5,B,538ak0825hmSD8DsJ21<D50U0E:222222222220Q1R7BB5eT0@hiC52@p0kk,0*2D",
+            "\\s:poole,c:1782400298,t:LIVE*1A\\!AIVDM,2,2,5,B,SQ@m3l`8880,2*0A",
+            "\\s:poole,c:1782400299,t:LIVE*1B\\!AIVDM,2,1,6,B,56:0WB82>6Cl909J221PTr1LDV0P4V2222222217H96G95ec0LkS4U3H8888,0*23",
+            "\\s:poole,c:1782400299,t:LIVE*1B\\!AIVDM,2,2,6,B,88888888880,2*21",
+            "\\s:poole,c:1782400301,t:LIVE*1B\\!AIVDM,2,1,7,A,5815>I`2CDP=KL5WF20`4N11848QF2222222221@BhQ9G5e<0CkS0CDp8888,0*6A",
+            "\\s:poole,c:1782400301,t:LIVE*1B\\!AIVDM,2,2,7,A,88888888880,2*23",
+            "\\s:poole,c:1782400301,t:LIVE*1B\\!AIVDM,1,1,,B,91b544h70LwpTKnM0ghE0:P245pd,0*65"
+          ],
+          %{
+            fragment: "",
+            decoded: [],
+            groups: %{},
+            latest: DateTime.from_unix!(0)
+          },
+          Ais.all_msg_types()
+        )
+
+      assert Enum.count(decoded) == 4
+      assert latest == DateTime.from_unix!(1_782_400_301)
+    end
+
     test "group" do
       {_, %{groups: groups, latest: _latest}} =
         ExAIS.Decoder.decode_message(
