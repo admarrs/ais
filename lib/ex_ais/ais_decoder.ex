@@ -137,10 +137,15 @@ defmodule ExAIS.Decoder do
   defp process_sentence_parts(parts, groups, latest, msg_types) do
     parts = normalize_parts(parts)
 
-    if group_message?(parts) do
-      handle_group_message(parts, groups, latest, msg_types)
-    else
-      handle_single_message(parts, groups, latest, msg_types)
+    cond do
+      group_message?(parts) ->
+        handle_group_message(parts, groups, latest, msg_types)
+
+      multi_sentence?(parts) ->
+        handle_multi_sentence(parts, groups, latest, msg_types)
+
+      true ->
+        handle_single_message(parts, groups, latest, msg_types)
     end
   end
 
@@ -154,6 +159,15 @@ defmodule ExAIS.Decoder do
 
   defp group_message?(parts) do
     Regex.match?(~r/,g:/, Enum.at(parts, 0))
+  end
+
+  defp multi_sentence?(parts) do
+    nmea = Enum.at(parts, 1, "")
+
+    case NMEA.parse(nmea) do
+      {:ok, %{total: total}} -> total != "1"
+      _ -> false
+    end
   end
 
   defp handle_group_message(parts, groups, latest, msg_types) do
@@ -171,6 +185,79 @@ defmodule ExAIS.Decoder do
     {decoded, %{groups: groups, latest: update_latest(latest, decoded)}}
   end
 
+  defp handle_multi_sentence([_, nmea_str] = parts, groups, latest, msg_types) do
+    with {:ok, parsed} <- NMEA.parse(nmea_str) do
+      %{
+        current: current,
+        channel: channel,
+        payload: payload,
+        sequential: sequential,
+        total: total
+      } = parsed
+
+      current_fragment = String.to_integer(current)
+      total_fragments = String.to_integer(total)
+
+      tags = decode_tags(Enum.at(parts, 0))
+
+      # Key by provider, channel and sequential id
+      provider = Map.get(tags, :s, "unknown")
+      group_key = "#{channel}-#{sequential}"
+
+      cond do
+        current_fragment == 1 ->
+          entry = %{tag: tags, payload: payload, time: DateTime.now!("Etc/UTC")}
+
+          new_groups = update_provider_group(groups, provider, group_key, entry)
+
+          {nil, %{groups: new_groups, latest: latest}}
+
+        current_fragment == total_fragments ->
+          provider_groups = Map.get(groups, provider, %{})
+
+          case provider_groups[group_key] do
+            nil ->
+              {nil, %{groups: groups, latest: latest}}
+
+            %{
+              tag: tag,
+              payload: existing_payload
+            } = _existing_entry ->
+              combined = existing_payload <> payload
+              new_groups = remove_provider_group(groups, provider, group_key)
+
+              synthetic_nmea = build_synthetic_nmea(parsed, combined)
+
+              case decode_nmea(synthetic_nmea, msg_types) do
+                {:ok, decoded} ->
+                  merged = Map.merge(tag, decoded)
+                  {merged, %{groups: new_groups, latest: update_latest(latest, merged)}}
+
+                _ ->
+                  {nil, %{groups: new_groups, latest: latest}}
+              end
+          end
+
+        true ->
+          provider_groups = Map.get(groups, provider, %{})
+
+          case provider_groups[group_key] do
+            nil ->
+              {nil, %{groups: groups, latest: latest}}
+
+            %{
+              payload: existing_payload
+            } = existing_entry ->
+              updated = %{existing_entry | payload: existing_payload <> payload}
+              new_groups = update_provider_group(groups, provider, group_key, updated)
+              {nil, %{groups: new_groups, latest: latest}}
+          end
+      end
+    else
+      _ -> {nil, %{groups: groups, latest: latest}}
+    end
+  end
+
   defp update_latest(latest, nil), do: latest
   defp update_latest(latest, %{timestamp: nil}), do: latest
 
@@ -183,6 +270,22 @@ defmodule ExAIS.Decoder do
     else
       latest
     end
+  end
+
+  defp build_synthetic_nmea(parsed, combined_payload) do
+    %{
+      channel: channel,
+      formatter: formatter,
+      padding: padding,
+      sequential: sequential,
+      talker: talker
+    } = parsed
+
+    body =
+      "#{talker}#{formatter},1,1,#{sequential},#{channel},#{combined_payload},#{padding}"
+
+    checksum = calc_checksum(String.slice(body, 1..-1//1))
+    "#{body}*#{checksum}"
   end
 
   def process_group(parts, groups, msg_types) do
@@ -277,7 +380,7 @@ defmodule ExAIS.Decoder do
     |> Enum.map(fn {provider, grps} ->
       new_grps =
         grps
-        |> Enum.filter(fn {_, v} -> DateTime.diff(now, v[:time]) > 30 end)
+        |> Enum.filter(fn {_, v} -> DateTime.diff(now, v[:time]) < 30 end)
         |> Enum.into(%{})
 
       {provider, new_grps}
