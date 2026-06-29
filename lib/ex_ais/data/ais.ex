@@ -378,7 +378,7 @@ defmodule ExAIS.Data.Ais do
       spare::1, safety_related_text::bitstring>> = payload
 
     safety_text_size = Kernel.floor(bit_size(safety_related_text) / 6) * 6
-    <<safety_text::size(safety_text_size), _::bitstring>> = safety_related_text
+    <<safety_text::size(^safety_text_size), _::bitstring>> = safety_related_text
 
     %{
       repeat_indicator: repeat_indicator,
@@ -398,7 +398,7 @@ defmodule ExAIS.Data.Ais do
     <<repeat_indicator::2, mmsi::30, spare::2, safety_related_text::bitstring>> = payload
 
     safety_text_size = Kernel.floor(bit_size(safety_related_text) / 6) * 6
-    <<safety_text::size(safety_text_size), _::bitstring>> = safety_related_text
+    <<safety_text::size(^safety_text_size), _::bitstring>> = safety_related_text
 
     %{
       repeat_indicator: repeat_indicator,
@@ -563,8 +563,8 @@ defmodule ExAIS.Data.Ais do
       longitude::integer-signed-size(28), latitude::integer-signed-size(27), cog::12,
       true_heading::9, time_stamp::6, spare2::2, class_b_unit_flag::1, class_b_display_flag::1,
       class_b_dsc_flag::1, class_b_band_flag::1, class_b_message_22_flag::1, mode_flag::1,
-      raim_flag::1, communication_state_selector_flag::1, communication_state::19,
-      _::bitstring>> = payload
+      raim_flag::1, communication_state_selector_flag::1, communication_state::19, _::bitstring>> =
+      payload
 
     %{
       repeat_indicator: repeat_indicator,
@@ -743,7 +743,7 @@ defmodule ExAIS.Data.Ais do
     name_extension =
       if name_extension_size >= 6 and name_extension_size < 84 do
         rounded = Kernel.floor(name_extension_size / 6) * 6
-        <<name::size(rounded), _::bitstring>> = name_extension
+        <<name::size(^rounded), _::bitstring>> = name_extension
         SixBit.get_string(name, rounded)
       else
         ""
@@ -811,8 +811,8 @@ defmodule ExAIS.Data.Ais do
   # !AIVDM,1,1,,B,G02:Kn01R`sn@291nj600000900,2*12
   defp parse_message(msg_type, payload) when msg_type == 23 do
     <<repeat_indicator::2, user_id::30, spare1::2, ne_lon::18, ne_lat::17, sw_lon::18, sw_lat::17,
-      station_type::4, ship_type::8, spare2::22, tx_rx::2, interval::4, quiet::4,
-      _::bitstring>> = payload
+      station_type::4, ship_type::8, spare2::22, tx_rx::2, interval::4, quiet::4, _::bitstring>> =
+      payload
 
     %{
       repeat_indicator: repeat_indicator,
@@ -953,7 +953,7 @@ defmodule ExAIS.Data.Ais do
       end
 
     bin_size = bit_size(bindata) - 20
-    <<binary_datas::size(bin_size), radio_status::20>> = bindata
+    <<binary_datas::size(^bin_size), radio_status::20>> = bindata
     Map.merge(msg, %{binary_data: binary_datas, radio_status: radio_status})
   end
 

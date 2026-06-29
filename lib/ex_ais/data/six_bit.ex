@@ -83,7 +83,7 @@ defmodule ExAIS.Data.SixBit do
   end
 
   defp do_chunks(binary, n, acc) do
-    <<chunk::size(n), rest::bitstring>> = binary
+    <<chunk::size(^n), rest::bitstring>> = binary
     do_chunks(rest, n, [<<chunk::size(n)>> | acc])
   end
 
