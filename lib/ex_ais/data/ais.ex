@@ -378,7 +378,7 @@ defmodule ExAIS.Data.Ais do
       spare::1, safety_related_text::bitstring>> = payload
 
     safety_text_size = Kernel.floor(bit_size(safety_related_text) / 6) * 6
-    <<safety_text::size(safety_text_size), _::bitstring>> = safety_related_text
+    <<safety_text::size(^safety_text_size), _::bitstring>> = safety_related_text
 
     %{
       repeat_indicator: repeat_indicator,
@@ -398,7 +398,7 @@ defmodule ExAIS.Data.Ais do
     <<repeat_indicator::2, mmsi::30, spare::2, safety_related_text::bitstring>> = payload
 
     safety_text_size = Kernel.floor(bit_size(safety_related_text) / 6) * 6
-    <<safety_text::size(safety_text_size), _::bitstring>> = safety_related_text
+    <<safety_text::size(^safety_text_size), _::bitstring>> = safety_related_text
 
     %{
       repeat_indicator: repeat_indicator,
@@ -743,7 +743,7 @@ defmodule ExAIS.Data.Ais do
     name_extension =
       if name_extension_size >= 6 and name_extension_size < 84 do
         rounded = Kernel.floor(name_extension_size / 6) * 6
-        <<name::size(rounded), _::bitstring>> = name_extension
+        <<name::size(^rounded), _::bitstring>> = name_extension
         SixBit.get_string(name, rounded)
       else
         ""
@@ -953,7 +953,7 @@ defmodule ExAIS.Data.Ais do
       end
 
     bin_size = bit_size(bindata) - 20
-    <<binary_datas::size(bin_size), radio_status::20>> = bindata
+    <<binary_datas::size(^bin_size), radio_status::20>> = bindata
     Map.merge(msg, %{binary_data: binary_datas, radio_status: radio_status})
   end
 
