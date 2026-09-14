@@ -26,7 +26,7 @@ defmodule ExAIS.Decoder do
   alias ExAIS.Data.Ais
   alias ExAIS.Data.NMEA
 
-  @regex ~r/^\\[psgctq]:[^\\,*]+(?:,[psgctq]:[^\\,*]+)*\*[A-Fa-f0-9]{2}\\!(AIVDM|AIVDO),[^
+  @regex ~r/^\\[psgctq]:[^\\,*]+(?:,[psgctq]:[^\\,*]+)*\*[A-Fa-f0-9]{2}\\!((?:AI|AB|BS|AN)VD[MO]),[^
   *]+\*[A-Fa-f0-9]{2}$/
 
   @initial_state %{
@@ -150,7 +150,7 @@ defmodule ExAIS.Decoder do
   end
 
   defp normalize_parts(parts) do
-    if Regex.match?(~r/!(AIVDM|AIVDO)/, Enum.at(parts, 0, "")) do
+    if Regex.match?(~r/!(?:AI|AB|BS|AN)VD[MO]/, Enum.at(parts, 0, "")) do
       Enum.drop(parts, 1)
     else
       parts

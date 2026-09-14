@@ -29,9 +29,8 @@ defmodule ExAIS.Data.NMEA do
     end
   end
 
-  # Decode !AIVDM, !BSVDM, and !ANVDM/!ANVDO messages (AIS / AtoN)
   defp decode(talker, formatter, values)
-       when talker in ["!AI", "!BS", "!AN"] and formatter in ["VDM", "VDO"] do
+       when talker in ["!AI", "!AB", "!BS", "!AN"] and formatter in ["VDM", "VDO"] do
     keys = [
       :talker,
       :formatter,
