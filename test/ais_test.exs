@@ -350,7 +350,9 @@ defmodule ExAIS.AisTest do
       assert attr.msg_type == 26
       assert attr.mmsi == "84148325"
       assert attr.destination_id == 834_699_643
-      assert attr.binary_data == 56_667_087_614_597_972_315_516_681_099_691_458_287_859_986_378_339_796_046_340
+
+      assert attr.binary_data ==
+               56_667_087_614_597_972_315_516_681_099_691_458_287_859_986_378_339_796_046_340
     end
 
     test "decode class 27 with extra trailing bits" do
