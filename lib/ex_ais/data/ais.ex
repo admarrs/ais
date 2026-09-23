@@ -50,21 +50,9 @@ defmodule ExAIS.Data.Ais do
   @spec parse(binary(), non_neg_integer(), [non_neg_integer()]) :: {:invalid, %{}} | {:ok, any()}
   def parse(payload, padding, msg_types \\ @all_msg_types) do
     orig_payload = payload
-    payload = SixBit.decode(payload)
+    payload = payload |> SixBit.decode() |> strip_fill_bits(padding)
 
     <<msg_type::6, tail::bitstring>> = payload
-    # Any payload with a bad padding is invalid, check it before even trying to parse it
-    if msg_type in [1, 2, 3, 4, 9, 10, 11, 18, 19, 22, 27] do
-      if padding != 0 do
-        {:invalid, %{}}
-      end
-    end
-
-    if msg_type in [5, 23] do
-      if padding != 2 do
-        {:invalid, %{}}
-      end
-    end
 
     # Only interested in these message types
     if msg_type in msg_types do
@@ -94,6 +82,43 @@ defmodule ExAIS.Data.Ais do
       {:invalid, %{}}
     end
   end
+
+  # The last field of an NMEA sentence says how many fill bits (0-5) were added
+  # to pad the payload to a whole number of 6-bit characters. They are not part
+  # of the AIS message and must be removed before decoding.
+  defp strip_fill_bits(bits, padding) do
+    fill = fill_bit_count(padding)
+    keep = bit_size(bits) - fill
+
+    if fill > 0 and keep >= 6 do
+      <<kept::bitstring-size(^keep), _fill::bitstring>> = bits
+      kept
+    else
+      bits
+    end
+  end
+
+  defp fill_bit_count(padding) when is_integer(padding) and padding in 0..5, do: padding
+
+  defp fill_bit_count(padding) when is_binary(padding) do
+    case Integer.parse(padding) do
+      {n, ""} when n in 0..5 -> n
+      _ -> 0
+    end
+  end
+
+  defp fill_bit_count(_), do: 0
+
+  # Takes up to `count` 1-bit flags from the front of `bits`, using nil for any
+  # flag missing because the transmitter sent a shortened message.
+  defp take_flags(bits, count), do: take_flags(bits, count, [])
+
+  defp take_flags(bits, 0, acc), do: {Enum.reverse(acc), bits}
+
+  defp take_flags(<<flag::1, rest::bitstring>>, count, acc),
+    do: take_flags(rest, count - 1, [flag | acc])
+
+  defp take_flags(<<>>, count, acc), do: take_flags(<<>>, count - 1, [nil | acc])
 
   defguard valid_type_5(msg_type, payload) when msg_type == 5 and bit_size(payload) >= 418
 
@@ -531,26 +556,15 @@ defmodule ExAIS.Data.Ais do
            latitude::integer-signed-size(17), spare2::5, data::bitstring>>
        )
        when msg_type == 17 do
-    # Legacy DGNSS datas
-    <<dcdt_message_type::6, dcdt_station_id::10, dcdt_z_count::13, dcdt_sequence_number::3,
-      dcdt_n::5, dcdt_health::3, dcdt_dgnss_data_word::bitstring>> = data
-
+    # Type 17 positions are in 1/10 minute, unlike the 1/10000 minute of types 1-3
     %{
       repeat_indicator: repeat_indicator,
       mmsi: mmsi,
       spare1: spare1,
-      longitude: longitude / 600_000.0,
-      latitude: latitude / 600_000.0,
+      longitude: longitude / 600.0,
+      latitude: latitude / 600.0,
       spare2: spare2,
-      data: %{
-        dcdt_message_type: dcdt_message_type,
-        dcdt_station_id: dcdt_station_id,
-        dcdt_z_count: dcdt_z_count,
-        dcdt_sequence_number: dcdt_sequence_number,
-        dcdt_n: dcdt_n,
-        dcdt_health: dcdt_health,
-        dcdt_dgnss_data_word: dcdt_dgnss_data_word
-      }
+      data: decode_dgnss(data)
     }
   end
 
@@ -735,8 +749,12 @@ defmodule ExAIS.Data.Ais do
     <<repeat_indicator::2, mmsi::30, aid_type::5, aid_name::120, position_accuracy::1,
       longitude::integer-signed-size(28), latitude::integer-signed-size(27), dimension_a::9,
       dimension_b::9, dimension_c::6, dimension_d::6, type_of_epfd::4, time_stamp::6,
-      off_position_indicator::1, aton_status::8, raim_flag::1, virtual_aton_flag::1,
-      assigned_mode_flag::1, spare::1, name_extension::bitstring>> = payload
+      off_position_indicator::1, aton_status::8, tail::bitstring>> = payload
+
+    # Some AtoN transmitters send fewer than the 272 bits the standard requires,
+    # dropping the trailing flags. Missing flags are returned as nil.
+    {[raim_flag, virtual_aton_flag, assigned_mode_flag, spare], name_extension} =
+      take_flags(tail, 4)
 
     name_extension_size = bit_size(name_extension)
 
@@ -941,18 +959,10 @@ defmodule ExAIS.Data.Ais do
         {msg, bindata}
       end
 
-    {msg, bindata} =
-      if destination_indicator == 0 do
-        # broadcast
-        <<binary_data::104, bindat::bitstring>> = bindata
-        {Map.merge(msg, %{binary_data: binary_data}), bindat}
-      else
-        # addressed
-        <<binary_data::72, bindat::bitstring>> = bindata
-        {Map.merge(msg, %{binary_data: binary_data}), bindat}
-      end
-
+    # Binary data is variable length and runs up to the 20-bit radio status
     bin_size = bit_size(bindata) - 20
+    if bin_size < 0, do: raise(MatchError, term: bindata)
+
     <<binary_datas::size(^bin_size), radio_status::20>> = bindata
     Map.merge(msg, %{binary_data: binary_datas, radio_status: radio_status})
   end
@@ -967,7 +977,7 @@ defmodule ExAIS.Data.Ais do
        when msg_type == 27 do
     <<repeat_indicator::2, mmsi::30, position_accuracy::1, raim_flag::1, navigational_status::4,
       longitude::integer-signed-size(18), latitude::integer-signed-size(17), sog::6, cog::9,
-      position_latency::1, spare::1>> = payload
+      position_latency::1, spare::1, _::bitstring>> = payload
 
     %{
       repeat_indicator: repeat_indicator,
@@ -993,4 +1003,23 @@ defmodule ExAIS.Data.Ais do
   defp parse_message(_msg_type, _payload) do
     %{}
   end
+
+  # Legacy DGNSS data. Base stations often send Type 17 with no correction data,
+  # so a missing or partial header is not an error.
+  defp decode_dgnss(
+         <<dcdt_message_type::6, dcdt_station_id::10, dcdt_z_count::13, dcdt_sequence_number::3,
+           dcdt_n::5, dcdt_health::3, dcdt_dgnss_data_word::bitstring>>
+       ) do
+    %{
+      dcdt_message_type: dcdt_message_type,
+      dcdt_station_id: dcdt_station_id,
+      dcdt_z_count: dcdt_z_count,
+      dcdt_sequence_number: dcdt_sequence_number,
+      dcdt_n: dcdt_n,
+      dcdt_health: dcdt_health,
+      dcdt_dgnss_data_word: dcdt_dgnss_data_word
+    }
+  end
+
+  defp decode_dgnss(_data), do: nil
 end
