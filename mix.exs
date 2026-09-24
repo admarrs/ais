@@ -2,7 +2,7 @@ defmodule ExAIS.MixProject do
   use Mix.Project
 
   @source_url "https://github.com/admarrs/ais"
-  @version "0.2.7"
+  @version "0.2.8"
 
   def project do
     [
