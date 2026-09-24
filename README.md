@@ -24,7 +24,7 @@ Add `exais` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:exais, "~> 0.2.6"}
+    {:exais, "~> 0.2.7"}
   ]
 end
 ```

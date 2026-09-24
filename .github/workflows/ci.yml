@@ -73,6 +73,15 @@ jobs:
 
       - run: mix deps.get
 
+      - name: Verify tag matches mix.exs version
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          MIX_VERSION=$(grep -oP '(?<=@version ")([^"]+)' mix.exs)
+          if [ "$TAG_VERSION" != "$MIX_VERSION" ]; then
+            echo "Tag version ($TAG_VERSION) does not match mix.exs version ($MIX_VERSION)"
+            exit 1
+          fi
+
       - run: mix hex.publish --yes
         env:
           HEX_API_KEY: ${{ secrets.HEX_API_KEY }}
