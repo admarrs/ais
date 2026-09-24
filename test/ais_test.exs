@@ -179,8 +179,17 @@ defmodule ExAIS.AisTest do
       {:ok, attr} = Ais.parse(sentence.payload, sentence.padding)
       assert attr.msg_type == 17
       assert attr.mmsi == "4310302"
-      assert attr.latitude == 0.035618333333333335
-      assert attr.longitude == 0.13989333333333334
+      assert attr.latitude == 35.61833333333333
+      assert attr.longitude == 139.89333333333335
+    end
+
+    test "decode class 17 with no DGNSS data and fill bits" do
+      {:ok, attr} = Ais.parse("A03n9rPMUpOSh0", "4")
+      assert attr.msg_type == 17
+      assert attr.mmsi == "4033002"
+      assert_in_delta attr.latitude, 26.93, 0.0001
+      assert_in_delta attr.longitude, 50.50333, 0.0001
+      assert attr.data == nil
     end
 
     test "decode class 18" do
@@ -303,6 +312,36 @@ defmodule ExAIS.AisTest do
                <<141, 45, 80, 73, 204, 123, 64, 7, 200, 39, 2, 129>>
     end
 
+    test "decode short class 21 missing trailing flags" do
+      {:ok, attr} = Ais.parse("E:9uR3@adQaP000000000000000K`@qd:gk<000000N00", "0")
+      assert attr.msg_type == 21
+      assert attr.mmsi == "681533965"
+      assert attr.assembled_name == "SYCS"
+      assert_in_delta attr.latitude, 37.56304, 0.00001
+      assert_in_delta attr.longitude, -122.21849, 0.00001
+      assert attr.virtual_aton_flag == 0
+      assert attr.assigned_mode_flag == nil
+      assert attr.spare == nil
+
+      {:ok, attr} = Ais.parse("ENjAVEg18:?Q?`?b0a90SWW0P00035?V;h7wp108883P0", "0")
+      assert attr.mmsi == "992241238"
+      assert attr.assembled_name == "BPT_B_P_TARRAGONA"
+    end
+
+    test "short class 21 with fill bits still decodes" do
+      {:ok, attr} = Ais.parse("E:9uR3@adQaP000000000000000K`@qd:gk<000000N00", "2")
+      assert attr.assembled_name == "SYCS"
+      assert attr.raim_flag == nil
+    end
+
+    test "class 26 too short for radio status is invalid" do
+      assert {:invalid, %{}} = Ais.parse("JnuowcsWowtcl@", "0")
+    end
+
+    test "class 6 too short is invalid" do
+      assert {:invalid, %{}} = Ais.parse("62vvD8@00000", "0")
+    end
+
     test "decode class 26" do
       {:ok, sentence} =
         NMEA.parse("!AIVDM,1,1,,A,J1@@0IK70PGgT740000000000@000?D0ih1e00006JlPC9C3,0*6B")
@@ -311,7 +350,18 @@ defmodule ExAIS.AisTest do
       assert attr.msg_type == 26
       assert attr.mmsi == "84148325"
       assert attr.destination_id == 834_699_643
-      assert attr.binary_data == 83_076_754_475_605_189_869_857_356_738_384_388
+
+      assert attr.binary_data ==
+               56_667_087_614_597_972_315_516_681_099_691_458_287_859_986_378_339_796_046_340
+    end
+
+    test "decode class 27 with extra trailing bits" do
+      {:ok, attr} = Ais.parse("K3MAQrShfR2qoPOtU99", "0")
+      assert attr.msg_type == 27
+      assert attr.mmsi == "232022506"
+      assert_in_delta attr.latitude, 39.65167, 0.00001
+      assert_in_delta attr.longitude, 19.85333, 0.00001
+      assert attr.cog == 511
     end
 
     test "decode class 27" do
